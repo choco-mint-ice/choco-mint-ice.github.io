@@ -65,23 +65,24 @@ function parseCombo(comboText) {
 }
 
 function calculateIdentity(deck, combo, handSize, trials) {
-    const comboCards = new Set();
-    for (const andRequirements of combo) {
-        for (const orRequirements of andRequirements) {
-            for (const {card} of orRequirements) {
-                comboCards.add(card);
-            }
-        }
-    }
     const deckSize = deck.length;
     const deckCounts = {};
     for (const card of deck) {
         deckCounts[card] = (deckCounts[card] || 0) + 1;
     }
-    const comboCardsCountsInDeck = {};
-    for (const comboCard of [...comboCards].sort()) {
-        if (deckCounts[comboCard]) {
-            comboCardsCountsInDeck[comboCard] = deckCounts[comboCard];
+
+    const comboCardsCountsInDeck = [];
+    for (const andRequirements of combo) {
+        const andRequirementsIdentity = [];
+        for (const orRequirements of andRequirements) {
+            for (const {card, max, min} of orRequirements) {
+                if (deckCounts[card]) {
+                    andRequirementsIdentity.push({deckCount: deckCounts[card], card, max, min});
+                }
+            }
+        }
+        if (andRequirementsIdentity.length > 0) {
+            comboCardsCountsInDeck.push(andRequirementsIdentity);
         }
     }
     return JSON.stringify({deckSize, handSize, trials, comboCardsCountsInDeck});
