@@ -1,0 +1,44 @@
+<html>
+<head>
+    <title>Deck simulator</title>
+    <link rel="stylesheet" href="deck_simulator.css">
+    <script src="deck_simulator.js"></script>
+</head>
+
+<body>
+    <div class="header">
+        <label>Hand size: <input class="hand-size" type="number"></label>
+        <label>Trials: <input class="trials" type="number"></label>
+        <button class="save">Save</button>
+        <button class="link">Copy link</button>
+        <button class="simulate">Simulate</button>
+        <span class="result"></span>
+    </div>
+    <div class="deck-and-combo">
+        <div class="deck">
+            <div class="textarea-controller">
+                <label>Deck: <select class="textarea-select"></select></label>
+                <input class="textarea-name">
+                <button class="textarea-new">New</button>
+                <button class="textarea-clear">Clear</button>
+                <button class="textarea-delete">Delete</button>
+            </div>
+            <div class="textarea-wrapper">
+                <textarea class="textarea"></textarea>
+            </div>
+        </div>
+        <div class="combo">
+            <div class="textarea-controller">
+                <label>Combo: <select class="textarea-select"></select></label>
+                <input class="textarea-name">
+                <button class="textarea-new">New</button>
+                <button class="textarea-clear">Clear</button>
+                <button class="textarea-delete">Delete</button>
+            </div>
+            <div class="textarea-wrapper">
+                <textarea class="textarea"></textarea>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
