@@ -1,73 +1,93 @@
+function splitLines(input) {
+    return input.split('\n').map(line => line.replace(/^\s+|\s+$/g, '')).filter(line => !!line && !line.startsWith('#'));
+}
 
-function runSimulations(deckText, comboText, handSize, trials) {
-    function splitLines(input) {
-        return input.split('\n').map(line => line.replace(/^\s+|\s+$/g, '')).filter(line => !!line && !line.startsWith('#'));
-    }
-
-    function parseDeck(deckText) {
-        const deck = [];
-        const deckErrors = [];
-        let total = undefined;
-        for (const line of splitLines(deckText)) {
-            const match = line.match(/^(\d+) (.*)/);
-            if (!match) {
-                deckErrors.push(`Line with invalid format ignored: ${line}.`);
-                continue;
+function parseDeck(deckText) {
+    const deck = [];
+    const deckErrors = [];
+    let total = undefined;
+    for (const line of splitLines(deckText)) {
+        const match = line.match(/^(\d+) (.*)/);
+        if (!match) {
+            deckErrors.push(`Line with invalid format ignored: ${line}.`);
+            continue;
+        }
+        const [_, countString, card] = match;
+        const count = parseInt(countString);
+        if (card === 'total') {
+            total = count;
+        } else {
+            for (let i = 0; i < count; i++) {
+                deck.push(card);
             }
-            const [_, countString, card] = match;
-            const count = parseInt(countString);
-            if (card === 'total') {
-                total = count;
+        }
+    }
+    if (total !== undefined) {
+        for (let i = deck.length; i < total; i++) {
+            deck.push('UNKNOWN CARD');
+        }
+    }
+    return {deck, deckErrors};
+}
+
+function parseRequirement(requirementText, comboErrors) {
+    requirementText = requirementText.trim();
+    const exactRequirementMatch = requirementText.match(/^(\d+) (.*)/);
+    if (exactRequirementMatch) {
+        const [_, count, card] = exactRequirementMatch;
+        return {card, min: parseInt(count), max: parseInt(count)};
+    }
+    const rangeRequirementMatch = requirementText.match(/^(\d+)-(\d+) (.*)/);
+    if (rangeRequirementMatch) {
+        const [_, min, max, card] = rangeRequirementMatch;
+        return {card, min: parseInt(min), max: parseInt(max)};
+    }
+    // Infinity can't be parsed to JSON so just pick a really large number.
+    return {card: requirementText, min: 1, max: 1_000_000};
+}
+
+function parseCombo(comboText) {
+    const combo = [];
+    const comboErrors = [];
+    for (const line of splitLines(comboText)) {
+        const option = [];
+        for (const andRequirementText of line.split('+').map(req => req.trim())) {
+            const orMatch = andRequirementText.match(/^\((.*)\)$/);
+            if (orMatch) {
+                option.push(orMatch[1].split('|').map(req => parseRequirement(req)));
             } else {
-                for (let i = 0; i < count; i++) {
-                    deck.push(card);
-                }
+                option.push([parseRequirement(andRequirementText)]);
             }
         }
-        if (total !== undefined) {
-            for (let i = deck.length; i < total; i++) {
-                deck.push('UNKNOWN CARD');
+        combo.push(option);
+    }
+    return {combo, comboErrors};
+}
+
+function calculateIdentity(deck, combo, handSize, trials) {
+    const comboCards = new Set();
+    for (const andRequirements of combo) {
+        for (const orRequirements of andRequirements) {
+            for (const {card} of orRequirements) {
+                comboCards.add(card);
             }
         }
-        return {deck, deckErrors};
     }
-
-    function parseRequirement(requirementText, comboErrors) {
-        requirementText = requirementText.trim();
-        const exactRequirementMatch = requirementText.match(/^(\d+) (.*)/);
-        if (exactRequirementMatch) {
-            const [_, count, card] = exactRequirementMatch;
-            return {card, min: parseInt(count), max: parseInt(count)};
-        }
-        const rangeRequirementMatch = requirementText.match(/^(\d+)-(\d+) (.*)/);
-        if (rangeRequirementMatch) {
-            const [_, min, max, card] = rangeRequirementMatch;
-            return {card, min: parseInt(min), max: parseInt(max)};
-        }
-        // Infinity can't be parsed to JSON so just pick a really large number.
-        return {card: requirementText, min: 1, max: 1_000_000};
+    const deckSize = deck.length;
+    const deckCounts = {};
+    for (const card of deck) {
+        deckCounts[card] = (deckCounts[card] || 0) + 1;
     }
-
-    function parseCombo(comboText) {
-        const combo = [];
-        const comboErrors = [];
-        for (const line of splitLines(comboText)) {
-            const option = [];
-            for (const andRequirementText of line.split('+').map(req => req.trim())) {
-                const orMatch = andRequirementText.match(/^\((.*)\)$/);
-                if (orMatch) {
-                    option.push(orMatch[1].split('|').map(req => parseRequirement(req)));
-                } else {
-                    option.push([parseRequirement(andRequirementText)]);
-                }
-            }
-            combo.push(option);
+    const comboCardsCountsInDeck = {};
+    for (const comboCard of [...comboCards].sort()) {
+        if (deckCounts[comboCard]) {
+            comboCardsCountsInDeck[comboCard] = deckCounts[comboCard];
         }
-        return {combo, comboErrors};
     }
+    return JSON.stringify({deckSize, handSize, trials, comboCardsCountsInDeck});
+}
 
-    const {deck, deckErrors} = parseDeck(deckText);
-    const {combo, comboErrors} = parseCombo(comboText);
+function runSimulations(deck, combo, handSize, trials) {
     let count = 0;
     for (let i = 0; i < trials; i++) {
         const deckIndices = new Set();
@@ -129,7 +149,7 @@ class TextareaController {
 
         this.clearButton.addEventListener('click', () => {
             this.textarea.value = '';
-            this.textarea.dispatchEvent(new Event('change'));
+            this.textarea.dispatchEvent(new Event('input'));
         });
 
         this.deleteButton.addEventListener('click', () => {
@@ -145,7 +165,7 @@ class TextareaController {
             this.render();
         });
 
-        this.textarea.addEventListener('change', () => {
+        this.textarea.addEventListener('input', () => {
             this.data.entries[this.data.selectedValue] = this.textarea.value;
         });
     }
@@ -171,6 +191,7 @@ class TextareaController {
         }
         this.select.value = this.data.selectedValue;
         this.textarea.value = this.data.entries[this.data.selectedValue];
+        this.textarea.dispatchEvent(new Event('input'));
     }
 }
 
@@ -181,10 +202,12 @@ class MainController {
         this.trials = qs('.trials');
         this.saveButton = qs('.save');
         this.linkButton = qs('.link');
+        this.autoSimulate = qs('.auto-simulate');
         this.simulateButton = qs('.simulate');
         this.result = qs('.result');
         this.deck = qs('.deck');
         this.combo = qs('.combo');
+        this.lastIdentity = '';
 
         const urlDataParam = new URLSearchParams(window.location.search).get(DATA_KEY);
         const urlData = urlDataParam && JSON.parse(decodeURIComponent(urlDataParam));
@@ -194,15 +217,32 @@ class MainController {
 
         this.deckController = new TextareaController(this.deck, this.data.deckData, defaultData.deckData);
         this.comboController = new TextareaController(this.combo, this.data.comboData, defaultData.comboData);
+        this.doAutoSimulate();
 
         this.handSize.value = this.data.handSize;
         this.handSize.addEventListener('change', () => {
             this.data.handSize = this.handSize.value;
+            this.doAutoSimulate();
         });
 
         this.trials.value = this.data.trials;
         this.trials.addEventListener('change', () => {
             this.data.trials = this.trials.value;
+            this.doAutoSimulate();
+        });
+
+        this.autoSimulate.checked = this.data.autoSimulate;
+        this.autoSimulate.addEventListener('change', () => {
+            this.data.autoSimulate = this.autoSimulate.checked;
+            this.doAutoSimulate();
+        });
+
+        this.deckController.textarea.addEventListener('input', () => {
+            this.doAutoSimulate();
+        });
+
+        this.comboController.textarea.addEventListener('input', () => {
+            this.doAutoSimulate();
         });
 
         this.saveButton.addEventListener('click', () => {
@@ -216,19 +256,36 @@ class MainController {
         });
 
         this.simulateButton.addEventListener('click', () => {
-            const deckText = this.deckController.textarea.value;
-            const comboText = this.comboController.textarea.value;
-            const {handSize, trials} = this.data;
-            const result = runSimulations(deckText, comboText, handSize, trials);
-            this.result.textContent = `Result: ${result}`;
+            this.simulate(false);
         });
+    }
+
+    doAutoSimulate() {
+        if (this.data.autoSimulate) {
+            this.simulate(true);
+        }
+    }
+
+    simulate(skipIfIdentityUnchanged) {
+        const deckText = this.deckController.textarea.value;
+        const comboText = this.comboController.textarea.value;
+        const {handSize, trials} = this.data;
+        const {deck, deckErrors} = parseDeck(deckText);
+        const {combo, comboErrors} = parseCombo(comboText);
+        const identity = calculateIdentity(deck, combo, handSize, trials);
+        if (skipIfIdentityUnchanged && identity === this.lastIdentity) {
+            return;
+        }
+        const result = runSimulations(deck, combo, handSize, trials);
+        this.lastIdentity = identity;
+        this.result.textContent = `Result: ${parseFloat(result.toFixed(10))}`;
     }
 }
 
 const defaultDeck = `# Add your deck in this box and the combos in the one to the right
 # Comments start with a '#' and empty lines are ignored
 # You can add a new deck or combo by entering a new name and clicking New
-# And then you can use the dropdown to switch between them
+# And then you can use the drop-down to switch between them
 # And click Delete to delete them
 # Deleting the last check or combo will reset the state back to the default
 # Click Simulate after adding your deck and combos to get the result
@@ -260,7 +317,8 @@ DATA_KEY = 'data';
 
 const defaultData = {
     handSize: 5,
-    trials: 100_000,
+    trials: 10_000,
+    autoSimulate: true,
     deckData: {selectedValue: 'Default', entries: {'Default': defaultDeck}},
     comboData: {selectedValue: 'Default', entries: {'Default': defaultCombo}},
 };
