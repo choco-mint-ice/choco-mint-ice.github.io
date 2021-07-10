@@ -261,7 +261,7 @@ class MainController {
 
         this.workerManager = new WorkerManager(runSimulationWorkerCodeFunction);
         this.workerManager.resultCallback = ({result, identity}) => {
-            const resultText = `Result: ${parseFloat(result.toFixed(10))}`;
+            const resultText = `${parseFloat((result * 100).toFixed(5))}%`;
             this.identityToResultText[identity] = resultText;
             this.result.textContent = resultText;
             console.timeEnd('simulate');
@@ -400,6 +400,7 @@ const defaultDeck = `# Add your deck in this box and the combos in the one to th
 # And click Delete to delete them
 # Deleting the last check or combo will reset the state back to the default
 # Click Simulate after adding your deck and combos to get the result
+# Or click Auto to enable auto-simulation
 # You can click Save to save your data to local storage
 # Or click Link to copy a link to share with others
 
