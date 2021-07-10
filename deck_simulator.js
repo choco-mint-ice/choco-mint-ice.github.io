@@ -85,7 +85,15 @@ function calculateIdentity(deck, combo, handSize, trials) {
             comboCardsCountsInDeck.push(andRequirementsIdentity);
         }
     }
-    return JSON.stringify({deckSize, handSize, trials, comboCardsCountsInDeck});
+    const json = JSON.stringify({deckSize, handSize, trials, comboCardsCountsInDeck});
+    // Same hashing algorithm for strings as used in Java
+    let hash = 0;
+    for (let i = 0; i < json.length; i++) {
+        const char = json.charCodeAt(i);
+        hash = hash * 31 + char;
+        hash = hash & hash // Make sure we don't go past the 32 bit limit;
+    }
+    return hash;
 }
 
 function replaceCardNamesWithNumbers(deck, combo) {
@@ -203,21 +211,21 @@ class MainController {
         this.trials = qs('.trials');
         this.saveButton = qs('.save');
         this.linkButton = qs('.link');
-        this.autoSimulate = qs('.auto-simulate');
+        this.auto = qs('.auto-simulate');
         this.simulateButton = qs('.simulate');
         this.result = qs('.result');
         this.deck = qs('.deck');
         this.combo = qs('.combo');
-        this.identityToResultText = {};
 
         const urlDataParam = new URLSearchParams(window.location.search).get(DATA_KEY);
         const urlData = urlDataParam && JSON.parse(decodeURIComponent(urlDataParam));
         const localStorageValue = window.localStorage.getItem(DATA_KEY)
         const localStorageData = localStorageValue && JSON.parse(localStorageValue);
-        this.data = urlData || localStorageData || deepClone(defaultData);
+        this.data = {...deepClone(defaultData), ...(urlData || localStorageData || {})};
 
         this.deckController = new TextareaController(this.deck, this.data.deckData, defaultData.deckData);
         this.comboController = new TextareaController(this.combo, this.data.comboData, defaultData.comboData);
+        this.resultsCache = new LruCache(this.data.resultsCache);
 
         this.handSize.value = this.data.handSize;
         this.handSize.addEventListener('change', () => {
@@ -231,9 +239,9 @@ class MainController {
             this.doAutoSimulate();
         });
 
-        this.autoSimulate.checked = this.data.autoSimulate;
-        this.autoSimulate.addEventListener('change', () => {
-            this.data.autoSimulate = this.autoSimulate.checked;
+        this.auto.checked = this.data.autoSimulate;
+        this.auto.addEventListener('change', () => {
+            this.data.autoSimulate = this.auto.checked;
             this.doAutoSimulate();
         });
 
@@ -261,13 +269,12 @@ class MainController {
 
         this.workerManager = new WorkerManager(runSimulationWorkerCodeFunction);
         this.workerManager.resultCallback = ({result, identity}) => {
-            const resultText = `${parseFloat((result * 100).toFixed(5))}%`;
-            this.identityToResultText[identity] = resultText;
-            this.result.textContent = resultText;
+            this.resultsCache.set(identity, result);
+            this.result.textContent = `${parseFloat((result * 100).toFixed(5))}%`;
             console.timeEnd('simulate');
         };
-        
-        this.doAutoSimulate();
+
+        this.doAutoSimulate(false);
     }
 
     doAutoSimulate() {
@@ -276,16 +283,19 @@ class MainController {
         }
     }
 
-    simulate(useIdentityCache) {
+    simulate(automaticallyStarted) {
         const deckText = this.deckController.textarea.value;
         const comboText = this.comboController.textarea.value;
         const {handSize, trials} = this.data;
         const {deck, deckErrors} = parseDeck(deckText);
         const {combo, comboErrors} = parseCombo(comboText);
         const identity = calculateIdentity(deck, combo, handSize, trials);
-        if (useIdentityCache && this.identityToResultText[identity]) {
-            this.result.textContent = this.identityToResultText[identity];
-            return;
+        if (automaticallyStarted) {
+            const cachedResult = this.resultsCache.get(identity);
+            if (cachedResult !== undefined) {
+                this.result.textContent = `${parseFloat((cachedResult * 100).toFixed(5))}%`;
+                return;
+            }
         }
         console.time('simulate');
         replaceCardNamesWithNumbers(deck, combo);
@@ -393,6 +403,37 @@ function runSimulationWorkerCodeFunction() {
     });
 }
 
+class LruCache {
+    maxEntries = 10;
+
+    constructor(storage) {
+        this.storage = storage;
+    }
+
+    get(key) {
+        for (let i = 0; i < this.storage.length; i++) {
+            if (this.storage[i][0] === key) {
+                const entry = this.storage.splice(i, 1);
+                this.storage.push(entry[0]);
+                return entry[0][1];
+            }
+        }
+        return undefined;
+    }
+
+    set(key, value) {
+        for (let i = 0; i < this.storage.length; i++) {
+            if (this.storage[i][0] === key) {
+                this.storage.splice(i, 1);
+            }
+        }
+        this.storage.push([key, value]);
+        if (this.storage.length > this.maxEntries) {
+            this.storage.splice(0, 1);
+        }
+    }
+}
+
 const defaultDeck = `# Add your deck in this box and the combos in the one to the right
 # Comments start with a '#' and empty lines are ignored
 # You can add a new deck or combo by entering a new name and clicking New
@@ -433,6 +474,7 @@ const defaultData = {
     autoSimulate: true,
     deckData: {selectedValue: 'Default', entries: {'Default': defaultDeck}},
     comboData: {selectedValue: 'Default', entries: {'Default': defaultCombo}},
+    resultsCache: [],
 };
 
 window.onload = () => {
