@@ -122,6 +122,86 @@ function replaceCardNamesWithNumbers(deck, combo) {
     }
 }
 
+function runSimulations(deck, combo, handSize, trials) {
+    const deckCounts = {};
+    for (const card of deck) {
+        deckCounts[card] = (deckCounts[card] || 0) + 1;
+    }
+    // Fisher-Yates shuffle for generating hands using crypto.getRandomValues for better performance over Math.random
+    const randomBytesLength = 2 ** 16;
+    const randomBytes = new Uint8Array(randomBytesLength);
+    const randomBytesSize = deck.length < 256 ? 1 : 2;
+    const maxRandomNumber = 2 ** (8 * randomBytesSize);
+    let randomBytesIndex = randomBytesLength;
+    let successfulTrials = 0;
+
+    let maxCardNumberInDeck = 0;
+    for (const card of deck) {
+        maxCardNumberInDeck = Math.max(maxCardNumberInDeck, card);
+    }
+
+    const maxAcceptables = [];
+    for (let position = 0; position < handSize; position++) {
+        const range = deck.length - position;
+        maxAcceptables[position] = maxRandomNumber - (maxRandomNumber % range);
+    }
+
+    const hand = new Uint16Array(maxCardNumberInDeck + 1);
+    for (let i = 0; i < trials; i++) {
+        const maxAcceptablesLength = maxAcceptables.length;
+        for (let j = 0; j < hand.length; j++) hand[j] = 0;
+        for (let position = 0; position < maxAcceptablesLength; position++) {
+            const range = deck.length - position;
+            const maxAcceptable = maxAcceptables[position];
+            while (true) {
+                if (randomBytesIndex === randomBytesLength) {
+                    crypto.getRandomValues(randomBytes);
+                    randomBytesIndex = 0;
+                }
+                let randomNumber = randomBytes[randomBytesIndex++];
+                if (randomBytesSize === 2) {
+                    randomNumber = (randomNumber << 8) | randomBytes[randomBytesIndex++]
+                }
+                if (randomNumber < maxAcceptable) {
+                    const randomIndex = position + (randomNumber % range);
+                    const card = deck[randomIndex];
+                    deck[randomIndex] = deck[position];
+                    deck[position] = card;
+                    const cardCount = hand[card];
+                    hand[card] = cardCount + 1;
+                    break;
+                }
+            }
+        }
+
+        const hasCombo = combo.some(andRequirements => {
+            return andRequirements.every(orRequirements => {
+                return orRequirements.some(({card, inDeck, count}) => {
+                    const handCount = hand[card];
+                    return inDeck ? (deckCounts[card] || 0) - handCount >= count : handCount >= count
+                });
+            })
+        });
+        if (hasCombo) {
+            successfulTrials++;
+        }
+    }
+    return successfulTrials;
+}
+
+function runSimulationsWorkerFactory() {
+    const workerCode = `
+(function() {
+    ${runSimulations.toString()}
+
+    addEventListener('message', ({data}) => {
+        const {deck, combo, handSize, trials} = data;
+        postMessage({data, result: runSimulations(deck, combo, handSize, trials)});
+    });
+})()`;
+    return new Worker(URL.createObjectURL(new Blob([workerCode], {type: 'text/javascript'})));
+}
+
 function deepClone(value) {
     return JSON.parse(JSON.stringify(value));
 }
@@ -215,6 +295,7 @@ class MainController {
         this.result = qs('.result');
         this.deck = qs('.deck');
         this.combo = qs('.combo');
+        this.useWorkers = true;
 
         const urlDataParam = new URLSearchParams(window.location.search).get(DATA_KEY);
         const urlData = urlDataParam && JSON.parse(decodeURIComponent(urlDataParam));
@@ -224,6 +305,7 @@ class MainController {
 
         this.deckController = new TextareaController(this.deck, this.data.deckData, defaultData.deckData);
         this.comboController = new TextareaController(this.combo, this.data.comboData, defaultData.comboData);
+        this.workerManager = new WorkerManager(runSimulationsWorkerFactory);
         this.resultsCache = new LruCache(this.data.resultsCache);
 
         this.handSize.value = this.data.handSize;
@@ -266,13 +348,6 @@ class MainController {
             this.simulate(false);
         });
 
-        this.workerManager = new WorkerManager(runSimulationWorkerCodeFunction);
-        this.workerManager.resultCallback = ({result, identity}) => {
-            this.resultsCache.set(identity, result);
-            this.result.textContent = `${parseFloat((result * 100).toFixed(5))}%`;
-            console.timeEnd('simulate');
-        };
-
         this.doAutoSimulate(false);
     }
 
@@ -299,7 +374,22 @@ class MainController {
         console.time('simulate');
         replaceCardNamesWithNumbers(deck, combo);
         this.lastIdentity = identity;
-        this.workerManager.postMessage({identity, deck, combo, handSize, trials});
+        if (this.useWorkers) {
+            this.workerManager.postMessage({identity, deck, combo, handSize, trials});
+            this.workerManager.resultsCallback = workerResults => {
+                const successfulTrials = workerResults.reduce((curr, acc) => curr + acc, 0);
+                this.setRunSimulationsResult(identity, successfulTrials / trials);
+            };
+        } else {
+            const successfulTrials = runSimulations(deck, combo, handSize, trials);
+            this.setRunSimulationsResult(identity, successfulTrials / trials);
+        }
+    }
+
+    setRunSimulationsResult(identity, result) {
+        this.resultsCache.set(identity, result);
+        this.result.textContent = `${parseFloat((result * 100).toFixed(5))}%`;
+        console.timeEnd('simulate');
     }
 }
 
@@ -340,27 +430,17 @@ class WorkerManager {
     messageIndex = 0;
     resultCallback = () => {};
 
-    constructor(workerCodeFunction) {
-        const workerUrl = URL.createObjectURL(new Blob(["(" + workerCodeFunction.toString() + ")()"], {type: 'text/javascript'}));
+    constructor(workerFactory) {
         const workerCount = (navigator.hardwareConcurrency || 2) - 1;
         for (let i = 0; i < workerCount; i++) {
-            const worker = new Worker(workerUrl);
+            const worker = workerFactory();
             this.workers.push(worker);
-            worker.addEventListener('message', event => {
-                if (this.messageIndex !== event.data.messageIndex) {
-                    return;
-                }
-                this.results.push(event.data);
-                if (this.results.length === this.workers.length) {
-                    let totalSuccessfulTrials = 0;
-                    let totalTrials = 0;
-                    for (const {successfulTrials, trials} of this.results) {
-                        totalSuccessfulTrials += successfulTrials;
-                        totalTrials += trials;
+            worker.addEventListener('message', ({data}) => {
+                if (this.messageIndex !== data.messageIndex) {
+                    this.results.push(data.result);
+                    if (this.results.length === this.workers.length) {
+                        this.resultsCallback(this.results);
                     }
-                    const identity = this.results[0].identity;
-                    const result = totalSuccessfulTrials / totalTrials;
-                    this.resultCallback({identity, result});
                 }
             });
         }
@@ -375,70 +455,9 @@ class WorkerManager {
             if (i === 0) {
                 workerTrials += message.trials % workerCount;
             }
-            this.workers[i].postMessage({...message, messageIndex: this.messageIndex, trials: workerTrials});
+            this.workers[i].postMessage({...message, trials: workerTrials, messageIndex: this.messageIndex});
         }
     }
-}
-
-function runSimulationWorkerCodeFunction() {
-    function runSimulations(deck, combo, handSize, trials) {
-        const deckCounts = {};
-        for (const card of deck) {
-            deckCounts[card] = (deckCounts[card] || 0) + 1;
-        }
-        // Fisher-Yates shuffle for generating hands using crypto.getRandomValues for better performance over Math.random
-        const randomBytesLength = 2 ** 16;
-        const randomBytes = new Uint8Array(randomBytesLength);
-        let randomBytesIndex = randomBytesLength;
-        let successfulTrials = 0;
-        for (let i = 0; i < trials; i++) {
-            const hand = [];
-            for (let cardIndex = 0; cardIndex < handSize; cardIndex++) {
-                while (true) {
-                    if (randomBytesIndex === randomBytesLength) {
-                        crypto.getRandomValues(randomBytes);
-                        randomBytesIndex = 0;
-                    }
-                    const range = deck.length - cardIndex;
-                    const maxAcceptable = 256 - (256 % range);
-                    const randomNumber = randomBytes[randomBytesIndex];
-                    randomBytesIndex++;
-                    if (randomNumber < maxAcceptable) {
-                        const randomIndex = cardIndex + randomNumber % range;
-                        const card = deck[randomIndex];
-                        deck[randomIndex] = deck[cardIndex];
-                        deck[cardIndex] = card;
-                        hand[card] = (hand[card] || 0) + 1;
-                        break;
-                    }
-                }
-            }
-
-            const hasCombo = combo.some(andRequirements => {
-                return andRequirements.every(orRequirements => {
-                    return orRequirements.some(({card, inDeck, count}) => {
-                        const handCount = hand[card] || 0;
-                        if (inDeck) {
-                            return (deckCounts[card] || 0) - handCount >= count;
-                        } else {
-                            return handCount >= count;
-                        }
-                    });
-                })
-            });
-
-            if (hasCombo) {
-                successfulTrials++;
-            }
-        }
-        return successfulTrials;
-    }
-
-    addEventListener('message', event => {
-        const {deck, combo, handSize, trials} = event.data;
-        const successfulTrials = runSimulations(deck, combo, handSize, trials);
-        postMessage({successfulTrials, ...event.data});
-    });
 }
 
 const defaultDeck = `# Add your deck in this box and the combos in the one to the right
@@ -489,5 +508,5 @@ const defaultData = {
 };
 
 window.onload = () => {
-    new MainController(document.body, defaultData);
+    window.mainController = new MainController(document.body, defaultData);
 };
