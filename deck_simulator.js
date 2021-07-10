@@ -208,7 +208,7 @@ class MainController {
         this.result = qs('.result');
         this.deck = qs('.deck');
         this.combo = qs('.combo');
-        this.lastIdentity = '';
+        this.identityToResultText = {};
 
         const urlDataParam = new URLSearchParams(window.location.search).get(DATA_KEY);
         const urlData = urlDataParam && JSON.parse(decodeURIComponent(urlDataParam));
@@ -260,9 +260,11 @@ class MainController {
         });
 
         this.workerManager = new WorkerManager(runSimulationWorkerCodeFunction);
-        this.workerManager.resultCallback = result => {
+        this.workerManager.resultCallback = ({result, identity}) => {
+            const resultText = `Result: ${parseFloat(result.toFixed(10))}`;
+            this.identityToResultText[identity] = resultText;
+            this.result.textContent = resultText;
             console.timeEnd('simulate');
-            this.result.textContent = `Result: ${parseFloat(result.toFixed(10))}`;
         };
         
         this.doAutoSimulate();
@@ -274,20 +276,21 @@ class MainController {
         }
     }
 
-    simulate(skipIfIdentityUnchanged) {
+    simulate(useIdentityCache) {
         const deckText = this.deckController.textarea.value;
         const comboText = this.comboController.textarea.value;
         const {handSize, trials} = this.data;
         const {deck, deckErrors} = parseDeck(deckText);
         const {combo, comboErrors} = parseCombo(comboText);
         const identity = calculateIdentity(deck, combo, handSize, trials);
-        if (skipIfIdentityUnchanged && identity === this.lastIdentity) {
+        if (useIdentityCache && this.identityToResultText[identity]) {
+            this.result.textContent = this.identityToResultText[identity];
             return;
         }
         console.time('simulate');
         replaceCardNamesWithNumbers(deck, combo);
         this.lastIdentity = identity;
-        this.workerManager.postMessage({deck, combo, handSize, trials});
+        this.workerManager.postMessage({identity, deck, combo, handSize, trials});
     }
 }
 
@@ -315,7 +318,9 @@ class WorkerManager {
                         totalSuccessfulTrials += successfulTrials;
                         totalTrials += trials;
                     }
-                    this.resultCallback(totalSuccessfulTrials / totalTrials);
+                    const identity = this.results[0].identity;
+                    const result = totalSuccessfulTrials / totalTrials;
+                    this.resultCallback({identity, result});
                 }
             });
         }
@@ -423,7 +428,7 @@ DATA_KEY = 'data';
 
 const defaultData = {
     handSize: 5,
-    trials: 100_000,
+    trials: 1_000_000,
     autoSimulate: true,
     deckData: {selectedValue: 'Default', entries: {'Default': defaultDeck}},
     comboData: {selectedValue: 'Default', entries: {'Default': defaultCombo}},
