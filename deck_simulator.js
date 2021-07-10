@@ -88,31 +88,31 @@ function calculateIdentity(deck, combo, handSize, trials) {
     return JSON.stringify({deckSize, handSize, trials, comboCardsCountsInDeck});
 }
 
-function runSimulations(deck, combo, handSize, trials) {
-    let count = 0;
-    for (let i = 0; i < trials; i++) {
-        const deckIndices = new Set();
-        while (deckIndices.size < Math.min(deck.length, handSize)) {
-            deckIndices.add(Math.floor(Math.random() * deck.length));
-        }
-        const hand = {};
-        for (const deckIndex of deckIndices) {
-            const card = deck[deckIndex];
-            hand[card] = (hand[card] || 0) + 1;
-        }
-        const hasCombo = combo.some(andRequirements => {
-            return andRequirements.every(orRequirements => {
-                return orRequirements.some(({card, min, max}) => {
-                    const count = hand[card] || 0;
-                    return count >= min && count <= max;
-                });
-            })
-        });
-        if (hasCombo) {
-            count++;
+function replaceCardNamesWithNumbers(deck, combo) {
+    // Doing this allows us to store the random hand in an array instead of a map for better performance
+    const cards = new Set(deck);
+    for (const andRequirements of combo) {
+        for (const orRequirements of andRequirements) {
+            for (const {card} of orRequirements) {
+                cards.add(card);
+            }
         }
     }
-    return count / trials;
+    const cardToNumber = {};
+    let currentNumber = 0;
+    for (const card of cards) {
+        cardToNumber[card] = currentNumber++;
+    }
+    for (let i = 0; i < deck.length; i++) {
+        deck[i] = cardToNumber[deck[i]];
+    }
+    for (const andRequirements of combo) {
+        for (const orRequirements of andRequirements) {
+            for (const requirement of orRequirements) {
+                requirement.card = cardToNumber[requirement.card];
+            }
+        }
+    }
 }
 
 function deepClone(value) {
@@ -259,6 +259,12 @@ class MainController {
         this.simulateButton.addEventListener('click', () => {
             this.simulate(false);
         });
+
+        this.workerManager = new WorkerManager(runSimulationWorkerCodeFunction);
+        this.workerManager.resultCallback = result => {
+            console.timeEnd('simulate');
+            this.result.textContent = `Result: ${parseFloat(result.toFixed(10))}`;
+        };
     }
 
     doAutoSimulate() {
@@ -277,10 +283,108 @@ class MainController {
         if (skipIfIdentityUnchanged && identity === this.lastIdentity) {
             return;
         }
-        const result = runSimulations(deck, combo, handSize, trials);
+        console.time('simulate');
+        replaceCardNamesWithNumbers(deck, combo);
         this.lastIdentity = identity;
-        this.result.textContent = `Result: ${parseFloat(result.toFixed(10))}`;
+        this.workerManager.postMessage({deck, combo, handSize, trials});
     }
+}
+
+class WorkerManager {
+    workers = [];
+    results = [];
+    messageIndex = 0;
+    resultCallback = () => {};
+
+    constructor(workerCodeFunction) {
+        const workerUrl = URL.createObjectURL(new Blob(["(" + workerCodeFunction.toString() + ")()"], {type: 'text/javascript'}));
+        const workerCount = (navigator.hardwareConcurrency || 2) - 1;
+        for (let i = 0; i < workerCount; i++) {
+            const worker = new Worker(workerUrl);
+            this.workers.push(worker);
+            worker.addEventListener('message', event => {
+                if (this.messageIndex !== event.data.messageIndex) {
+                    return;
+                }
+                this.results.push(event.data);
+                if (this.results.length === this.workers.length) {
+                    let totalSuccessfulTrials = 0;
+                    let totalTrials = 0;
+                    for (const {successfulTrials, trials} of this.results) {
+                        totalSuccessfulTrials += successfulTrials;
+                        totalTrials += trials;
+                    }
+                    this.resultCallback(totalSuccessfulTrials / totalTrials);
+                }
+            });
+        }
+    }
+
+    postMessage(message) {
+        const workerCount = this.workers.length;
+        this.results = [];
+        this.messageIndex++;
+        for (let i = 0; i < workerCount; i++) {
+            let workerTrials = Math.floor(message.trials / workerCount);
+            if (i === 0) {
+                workerTrials += message.trials % workerCount;
+            }
+            this.workers[i].postMessage({...message, messageIndex: this.messageIndex, trials: workerTrials});
+        }
+    }
+}
+
+function runSimulationWorkerCodeFunction() {
+    function runSimulations(deck, combo, handSize, trials) {
+        // Fisher-Yates shuffle for generating hands using crypto.getRandomValues for better performance over Math.random
+        const randomBytesLength = 2 ** 16;
+        const randomBytes = new Uint8Array(randomBytesLength);
+        let randomBytesIndex = randomBytesLength;
+        let successfulTrials = 0;
+        for (let i = 0; i < trials; i++) {
+            const hand = [];
+            for (let cardIndex = 0; cardIndex < handSize; cardIndex++) {
+                while (true) {
+                    if (randomBytesIndex === randomBytesLength) {
+                        crypto.getRandomValues(randomBytes);
+                        randomBytesIndex = 0;
+                    }
+                    const range = deck.length - cardIndex;
+                    const maxAcceptable = 256 - (256 % range);
+                    const randomNumber = randomBytes[randomBytesIndex];
+                    randomBytesIndex++;
+                    if (randomNumber < maxAcceptable) {
+                        const randomIndex = cardIndex + randomNumber % range;
+                        const card = deck[randomIndex];
+                        deck[randomIndex] = deck[cardIndex];
+                        deck[cardIndex] = card;
+                        hand[card] = (hand[card] || 0) + 1;
+                        break;
+                    }
+                }
+            }
+
+            const hasCombo = combo.some(andRequirements => {
+                return andRequirements.every(orRequirements => {
+                    return orRequirements.some(({card, min, max}) => {
+                        const count = hand[card] || 0;
+                        return count >= min && count <= max;
+                    });
+                })
+            });
+
+            if (hasCombo) {
+                successfulTrials++;
+            }
+        }
+        return successfulTrials;
+    }
+
+    addEventListener('message', event => {
+        const {deck, combo, handSize, trials} = event.data;
+        const successfulTrials = runSimulations(deck, combo, handSize, trials);
+        postMessage({successfulTrials, ...event.data});
+    });
 }
 
 const defaultDeck = `# Add your deck in this box and the combos in the one to the right
@@ -318,12 +422,11 @@ DATA_KEY = 'data';
 
 const defaultData = {
     handSize: 5,
-    trials: 10_000,
+    trials: 100_000,
     autoSimulate: true,
     deckData: {selectedValue: 'Default', entries: {'Default': defaultDeck}},
     comboData: {selectedValue: 'Default', entries: {'Default': defaultCombo}},
 };
-
 
 window.onload = () => {
     new MainController(document.body, defaultData);
