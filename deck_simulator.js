@@ -32,18 +32,17 @@ function parseDeck(deckText) {
 
 function parseRequirement(requirementText, comboErrors) {
     requirementText = requirementText.trim();
-    const exactRequirementMatch = requirementText.match(/^(\d+) (.*)/);
-    if (exactRequirementMatch) {
-        const [_, count, card] = exactRequirementMatch;
-        return {card, min: parseInt(count), max: parseInt(count)};
+    const multipleMatch = requirementText.match(/^(\d+) (.*)/);
+    if (multipleMatch) {
+        const [_, count, card] = multipleMatch;
+        return {card, count: parseInt(count)};
     }
-    const rangeRequirementMatch = requirementText.match(/^(\d+)-(\d+) (.*)/);
-    if (rangeRequirementMatch) {
-        const [_, min, max, card] = rangeRequirementMatch;
-        return {card, min: parseInt(min), max: parseInt(max)};
+    const inDeckMatch = requirementText.match(/^-(\d+) (.*)/);
+    if (inDeckMatch) {
+        const [_, count, card] = inDeckMatch;
+        return {card, inDeck: true, count: parseInt(count)};
     }
-    // Infinity can't be parsed to JSON so just pick a really large number.
-    return {card: requirementText, min: 1, max: 1_000_000};
+    return {card: requirementText, count: 1};
 }
 
 function parseCombo(comboText) {
@@ -304,6 +303,37 @@ class MainController {
     }
 }
 
+class LruCache {
+    maxEntries = 10;
+
+    constructor(storage) {
+        this.storage = storage;
+    }
+
+    get(key) {
+        for (let i = 0; i < this.storage.length; i++) {
+            if (this.storage[i][0] === key) {
+                const entry = this.storage.splice(i, 1);
+                this.storage.push(entry[0]);
+                return entry[0][1];
+            }
+        }
+        return undefined;
+    }
+
+    set(key, value) {
+        for (let i = 0; i < this.storage.length; i++) {
+            if (this.storage[i][0] === key) {
+                this.storage.splice(i, 1);
+            }
+        }
+        this.storage.push([key, value]);
+        if (this.storage.length > this.maxEntries) {
+            this.storage.splice(0, 1);
+        }
+    }
+}
+
 class WorkerManager {
     workers = [];
     results = [];
@@ -352,6 +382,10 @@ class WorkerManager {
 
 function runSimulationWorkerCodeFunction() {
     function runSimulations(deck, combo, handSize, trials) {
+        const deckCounts = {};
+        for (const card of deck) {
+            deckCounts[card] = (deckCounts[card] || 0) + 1;
+        }
         // Fisher-Yates shuffle for generating hands using crypto.getRandomValues for better performance over Math.random
         const randomBytesLength = 2 ** 16;
         const randomBytes = new Uint8Array(randomBytesLength);
@@ -382,9 +416,13 @@ function runSimulationWorkerCodeFunction() {
 
             const hasCombo = combo.some(andRequirements => {
                 return andRequirements.every(orRequirements => {
-                    return orRequirements.some(({card, min, max}) => {
-                        const count = hand[card] || 0;
-                        return count >= min && count <= max;
+                    return orRequirements.some(({card, inDeck, count}) => {
+                        const handCount = hand[card] || 0;
+                        if (inDeck) {
+                            return (deckCounts[card] || 0) - handCount >= count;
+                        } else {
+                            return handCount >= count;
+                        }
                     });
                 })
             });
@@ -403,37 +441,6 @@ function runSimulationWorkerCodeFunction() {
     });
 }
 
-class LruCache {
-    maxEntries = 10;
-
-    constructor(storage) {
-        this.storage = storage;
-    }
-
-    get(key) {
-        for (let i = 0; i < this.storage.length; i++) {
-            if (this.storage[i][0] === key) {
-                const entry = this.storage.splice(i, 1);
-                this.storage.push(entry[0]);
-                return entry[0][1];
-            }
-        }
-        return undefined;
-    }
-
-    set(key, value) {
-        for (let i = 0; i < this.storage.length; i++) {
-            if (this.storage[i][0] === key) {
-                this.storage.splice(i, 1);
-            }
-        }
-        this.storage.push([key, value]);
-        if (this.storage.length > this.maxEntries) {
-            this.storage.splice(0, 1);
-        }
-    }
-}
-
 const defaultDeck = `# Add your deck in this box and the combos in the one to the right
 # Comments start with a '#' and empty lines are ignored
 # You can add a new deck or combo by entering a new name and clicking New
@@ -443,7 +450,7 @@ const defaultDeck = `# Add your deck in this box and the combos in the one to th
 # Click Simulate after adding your deck and combos to get the result
 # Or click Auto to enable auto-simulation
 # You can click Save to save your data to local storage
-# Or click Link to copy a link to share with others
+# Or click Copy to copy a link to share with others
 
 # List the total number of cards
 40 total
@@ -453,8 +460,8 @@ const defaultDeck = `# Add your deck in this box and the combos in the one to th
 3 card b
 3 card c
 3 card d
-1 card e
-1 card f
+3 card e
+3 card f
 1 card g`;
 
 const defaultCombo = `# Simple one card combo
@@ -463,8 +470,12 @@ card a
 # Multi-card combo, need card b and either card c or card d
 card b + (card c | card d)
 
-# You can also specify that a card must not be in the hand, or a range
-card e + 0 card f + 1-2 card g`;
+# You can also specify that multiple copies of a card are needed
+card b + 2 card e
+
+# And that a card must remain in the deck by using a negative number
+# Here, at least 1 copy of card g must remain in the deck
+card b + card f + -1 card g`;
 
 DATA_KEY = 'data';
 
