@@ -218,7 +218,6 @@ class MainController {
 
         this.deckController = new TextareaController(this.deck, this.data.deckData, defaultData.deckData);
         this.comboController = new TextareaController(this.combo, this.data.comboData, defaultData.comboData);
-        this.doAutoSimulate();
 
         this.handSize.value = this.data.handSize;
         this.handSize.addEventListener('change', () => {
@@ -265,6 +264,8 @@ class MainController {
             console.timeEnd('simulate');
             this.result.textContent = `Result: ${parseFloat(result.toFixed(10))}`;
         };
+        
+        this.doAutoSimulate();
     }
 
     doAutoSimulate() {
