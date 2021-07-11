@@ -74,9 +74,9 @@ function calculateIdentity(deck, combo, handSize, trials) {
     for (const andRequirements of combo) {
         const andRequirementsIdentity = [];
         for (const orRequirements of andRequirements) {
-            for (const {card, max, min} of orRequirements) {
-                if (deckCounts[card]) {
-                    andRequirementsIdentity.push({deckCount: deckCounts[card], card, max, min});
+            for (const {card, count, inDeck} of orRequirements) {
+                if (inDeck || deckCounts[card]) {
+                    andRequirementsIdentity.push({card, count, inDeck});
                 }
             }
         }
