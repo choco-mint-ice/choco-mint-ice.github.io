@@ -70,15 +70,24 @@ function calculateIdentity(deck, combo, handSize, trials) {
         deckCounts[card] = (deckCounts[card] || 0) + 1;
     }
 
+    // Replace all cards not in the deck with 'NOT IN DECK i' in the combo
+    // This makes the indentity not change while typing a card name one letter at a time
     const comboCardsCountsInDeck = [];
     for (const andRequirements of combo) {
         const andRequirementsIdentity = [];
+        let notInDeckCount = 0;
         for (const orRequirements of andRequirements) {
+            const orRequirementsIdentity = [];
             for (const {card, count, inDeck} of orRequirements) {
-                if (inDeck || deckCounts[card]) {
-                    andRequirementsIdentity.push({card, count, inDeck});
+                if (deckCounts[card]) {
+                    orRequirementsIdentity.push({card, count, inDeck});
+                } else {
+                    const notInDeckAlias = `NOT IN DECK ${notInDeckCount}`;
+                    orRequirementsIdentity.push({card: notInDeckAlias, count, inDeck});
+                    notInDeckCount++;
                 }
             }
+            andRequirementsIdentity.push(orRequirementsIdentity);
         }
         if (andRequirementsIdentity.length > 0) {
             comboCardsCountsInDeck.push(andRequirementsIdentity);
@@ -345,7 +354,7 @@ class MainController {
             this.simulate(false);
         });
 
-        this.doAutoSimulate(false);
+        this.doAutoSimulate();
     }
 
     doAutoSimulate() {
