@@ -127,6 +127,8 @@ function runSimulations(deck, combo, handSize, trials) {
     for (const card of deck) {
         deckCounts[card] = (deckCounts[card] || 0) + 1;
     }
+    handSize = Math.min(deck.length, handSize);
+
     // Fisher-Yates shuffle for generating hands using crypto.getRandomValues for better performance over Math.random
     const randomBytesLength = 2 ** 16;
     const randomBytes = new Uint8Array(randomBytesLength);
@@ -212,7 +214,6 @@ class TextareaController {
         this.select = qs('.textarea-select');
         this.name = qs('.textarea-name');
         this.newButton = qs('.textarea-new');
-        this.clearButton = qs('.textarea-clear');
         this.deleteButton = qs('.textarea-delete');
         this.textarea = qs('.textarea');
         this.defaultData = defaultData;
@@ -230,14 +231,10 @@ class TextareaController {
                 return;
             }
             this.data.selectedValue = newName;
-            this.data.entries[this.data.selectedValue] = this.textarea.value;
+            this.data.entries[this.data.selectedValue] = '';
             this.name.value = '';
-            this.render();
-        });
-
-        this.clearButton.addEventListener('click', () => {
             this.textarea.value = '';
-            this.textarea.dispatchEvent(new Event('input'));
+            this.render();
         });
 
         this.deleteButton.addEventListener('click', () => {
