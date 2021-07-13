@@ -274,7 +274,7 @@ class TextareaController {
                 oldNames[option.value] = option;
             }
         }
-        for (const name of newNames) {
+        for (const name of [...newNames].sort()) {
             if (oldNames[name]) {
                 this.select.appendChild(oldNames[name]);
             } else {
