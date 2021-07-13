@@ -79,11 +79,12 @@ function calculateIdentity(deck, combo, handSize, trials) {
         for (const orRequirements of andRequirements) {
             const orRequirementsIdentity = [];
             for (const {card, count, inDeck} of orRequirements) {
+                const deckCount = deckCounts[card];
                 if (deckCounts[card]) {
-                    orRequirementsIdentity.push({card, count, inDeck});
+                    orRequirementsIdentity.push({card, count, deckCount, inDeck});
                 } else {
                     const notInDeckAlias = `NOT IN DECK ${notInDeckCount}`;
-                    orRequirementsIdentity.push({card: notInDeckAlias, count, inDeck});
+                    orRequirementsIdentity.push({card: notInDeckAlias, count, deckCount, inDeck});
                     notInDeckCount++;
                 }
             }
