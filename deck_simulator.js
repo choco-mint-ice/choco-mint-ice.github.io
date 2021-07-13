@@ -208,7 +208,7 @@ function runSimulationsWorkerFactory() {
 
     addEventListener('message', ({data}) => {
         const {deck, combo, handSize, trials} = data;
-        postMessage({data, result: runSimulations(deck, combo, handSize, trials)});
+        postMessage({...data, result: runSimulations(deck, combo, handSize, trials)});
     });
 })()`;
     return new Worker(URL.createObjectURL(new Blob([workerCode], {type: 'text/javascript'})));
@@ -303,6 +303,7 @@ class MainController {
         this.deck = qs('.deck');
         this.combo = qs('.combo');
         this.useWorkers = true;
+        this.simulateCount = 0;
 
         const urlDataParam = new URLSearchParams(window.location.search).get(DATA_KEY);
         const urlData = urlDataParam && JSON.parse(decodeURIComponent(urlDataParam));
@@ -371,6 +372,7 @@ class MainController {
         const {deck, deckErrors} = parseDeck(deckText);
         const {combo, comboErrors} = parseCombo(comboText);
         const identity = calculateIdentity(deck, combo, handSize, trials);
+        this.lastIdentity = identity;
         if (automaticallyStarted) {
             const cachedResult = this.resultsCache.get(identity);
             if (cachedResult !== undefined) {
@@ -378,25 +380,27 @@ class MainController {
                 return;
             }
         }
-        console.time('simulate');
+        const simulateCount = this.simulateCount;
+        this.simulateCount++;
+        console.time(`simulate call ${simulateCount}`);
         replaceCardNamesWithNumbers(deck, combo);
-        this.lastIdentity = identity;
+
+        const resultCallback = (successfulTrials) => {
+            if (this.lastIdentity === identity) {
+                const result = successfulTrials / trials;
+                this.resultsCache.set(identity, result);
+                this.result.textContent = `${parseFloat((result * 100).toFixed(5))}%`;
+                console.timeEnd(`simulate call ${simulateCount}`);
+            }
+        };
         if (this.useWorkers) {
             this.workerManager.postMessage({identity, deck, combo, handSize, trials});
             this.workerManager.resultsCallback = workerResults => {
-                const successfulTrials = workerResults.reduce((curr, acc) => curr + acc, 0);
-                this.setRunSimulationsResult(identity, successfulTrials / trials);
+                resultCallback(workerResults.reduce((curr, acc) => curr + acc, 0));
             };
         } else {
-            const successfulTrials = runSimulations(deck, combo, handSize, trials);
-            this.setRunSimulationsResult(identity, successfulTrials / trials);
+            resultCallback(runSimulations(deck, combo, handSize, trials));
         }
-    }
-
-    setRunSimulationsResult(identity, result) {
-        this.resultsCache.set(identity, result);
-        this.result.textContent = `${parseFloat((result * 100).toFixed(5))}%`;
-        console.timeEnd('simulate');
     }
 }
 
@@ -443,7 +447,7 @@ class WorkerManager {
             const worker = workerFactory();
             this.workers.push(worker);
             worker.addEventListener('message', ({data}) => {
-                if (this.messageIndex !== data.messageIndex) {
+                if (this.messageIndex === data.messageIndex) {
                     this.results.push(data.result);
                     if (this.results.length === this.workers.length) {
                         this.resultsCallback(this.results);
