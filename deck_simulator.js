@@ -110,6 +110,10 @@ function calculateIdentity(deck, combo, handSize, trials) {
 }
 
 function runSimulations(deck, combo, handSize, trials) {
+    if (deck.length === 0) {
+        return 0;
+    }
+    
     // Replace the card names with numbers, but also keep track of the special cards
     // Doing this allows us to store the random hand in an array instead of a map for better performance
     const specialCards = [];
@@ -340,7 +344,7 @@ class MainController {
         this.result = qs('.result');
         this.deck = qs('.deck');
         this.combo = qs('.combo');
-        this.useWorkers = true;
+        this.useWorkers = false;
         this.simulateCount = 0;
 
         const urlDataParam = new URLSearchParams(window.location.search).get(DATA_KEY);
