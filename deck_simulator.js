@@ -113,7 +113,7 @@ function runSimulations(deck, combo, handSize, trials) {
     if (deck.length === 0) {
         return 0;
     }
-    
+
     // Replace the card names with numbers, but also keep track of the special cards
     // Doing this allows us to store the random hand in an array instead of a map for better performance
     const specialCards = [];
@@ -344,7 +344,7 @@ class MainController {
         this.result = qs('.result');
         this.deck = qs('.deck');
         this.combo = qs('.combo');
-        this.useWorkers = false;
+        this.useWorkers = true;
         this.simulateCount = 0;
 
         const urlDataParam = new URLSearchParams(window.location.search).get(DATA_KEY);
@@ -534,6 +534,7 @@ const defaultDeck = `# Add your deck in this box and the combos in the one to th
 3 card e
 3 card f
 1 card g
+
 # You can add cards that perform special actions
 # Only the first special action card will be used in a hand
 2 draw2
