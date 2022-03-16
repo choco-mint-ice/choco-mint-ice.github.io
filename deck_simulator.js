@@ -340,7 +340,7 @@ class MainController {
         this.result = qs('.result');
         this.deck = qs('.deck');
         this.combo = qs('.combo');
-        this.useWorkers = false;
+        this.useWorkers = true;
         this.simulateCount = 0;
 
         const urlDataParam = new URLSearchParams(window.location.search).get(DATA_KEY);
