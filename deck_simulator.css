@@ -5,11 +5,3 @@ html, body {
 .deck-and-combo .textarea {
     resize: none;
 }
-
-.hand-size {
-    max-width: 64px;
-}
-
-.trials {
-    max-width: 128px;
-}
