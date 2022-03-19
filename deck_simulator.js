@@ -66,12 +66,16 @@ function parseCombo(comboText) {
 function calculateIdentity(deck, combo, handSize, trials) {
     const deckSize = deck.length;
     const deckCounts = {};
+    const specialCards = {};
     for (const card of deck) {
         deckCounts[card] = (deckCounts[card] || 0) + 1;
+        if (card.match(/^(draw|pickfrom)(\d+)$/)) {
+            specialCards[card] = (specialCards[card] || 0) + 1;
+        }
     }
 
     // Replace all cards not in the deck with 'NOT IN DECK i' in the combo
-    // This makes the indentity not change while typing a card name one letter at a time
+    // This makes the identity not change while typing a card name one letter at a time
     const comboCardsCountsInDeck = [];
     for (const andRequirements of combo) {
         const andRequirementsIdentity = [];
@@ -94,7 +98,7 @@ function calculateIdentity(deck, combo, handSize, trials) {
             comboCardsCountsInDeck.push(andRequirementsIdentity);
         }
     }
-    const json = JSON.stringify({deckSize, handSize, trials, comboCardsCountsInDeck});
+    const json = JSON.stringify({deckSize, handSize, trials, specialCards, comboCardsCountsInDeck});
     // Same hashing algorithm for strings as used in Java
     let hash = 0;
     for (let i = 0; i < json.length; i++) {
@@ -105,8 +109,14 @@ function calculateIdentity(deck, combo, handSize, trials) {
     return hash;
 }
 
-function replaceCardNamesWithNumbers(deck, combo) {
+function runSimulations(deck, combo, handSize, trials) {
+    if (deck.length === 0) {
+        return 0;
+    }
+
+    // Replace the card names with numbers, but also keep track of the special cards
     // Doing this allows us to store the random hand in an array instead of a map for better performance
+    const specialCards = [];
     const cards = new Set(deck);
     for (const andRequirements of combo) {
         for (const orRequirements of andRequirements) {
@@ -121,7 +131,12 @@ function replaceCardNamesWithNumbers(deck, combo) {
         cardToNumber[card] = currentNumber++;
     }
     for (let i = 0; i < deck.length; i++) {
-        deck[i] = cardToNumber[deck[i]];
+        const card = deck[i];
+        deck[i] = cardToNumber[card];
+        let match = card.match(/^(draw|pickfrom)(\d+)$/);
+        if (match) {
+            specialCards[cardToNumber[card]] = {type: match[1], count: parseInt(match[2])};
+        }
     }
     for (const andRequirements of combo) {
         for (const orRequirements of andRequirements) {
@@ -130,9 +145,7 @@ function replaceCardNamesWithNumbers(deck, combo) {
             }
         }
     }
-}
 
-function runSimulations(deck, combo, handSize, trials) {
     const deckCounts = {};
     for (const card of deck) {
         deckCounts[card] = (deckCounts[card] || 0) + 1;
@@ -153,18 +166,26 @@ function runSimulations(deck, combo, handSize, trials) {
     }
 
     const maxAcceptables = [];
-    for (let position = 0; position < handSize; position++) {
+    for (let position = 0; position < deck.length; position++) {
         const range = deck.length - position;
         maxAcceptables[position] = maxRandomNumber - (maxRandomNumber % range);
     }
 
     const hand = new Uint16Array(maxCardNumberInDeck + 1);
+    const checkCombo =  () => combo.some(andRequirements => {
+        return andRequirements.every(orRequirements => {
+            return orRequirements.some(({card, inDeck, count}) => {
+                const handCount = hand[card];
+                return inDeck ? ((deckCounts[card] || 0) - handCount) : handCount >= count;
+            });
+        });
+    });
+
     for (let i = 0; i < trials; i++) {
-        const maxAcceptablesLength = maxAcceptables.length;
+        const pickFromCards = [];
+        let specialAction = undefined;
         for (let j = 0; j < hand.length; j++) hand[j] = 0;
-        for (let position = 0; position < maxAcceptablesLength; position++) {
-            const range = deck.length - position;
-            const maxAcceptable = maxAcceptables[position];
+        for (let position = 0; true; position++) {
             while (true) {
                 if (randomBytesIndex === randomBytesLength) {
                     crypto.getRandomValues(randomBytes);
@@ -174,26 +195,47 @@ function runSimulations(deck, combo, handSize, trials) {
                 if (randomBytesSize === 2) {
                     randomNumber = (randomNumber << 8) | randomBytes[randomBytesIndex++]
                 }
-                if (randomNumber < maxAcceptable) {
+                if (randomNumber < maxAcceptables[position]) {
+                    const range = deck.length - position;
                     const randomIndex = position + (randomNumber % range);
                     const card = deck[randomIndex];
                     deck[randomIndex] = deck[position];
                     deck[position] = card;
-                    const cardCount = hand[card];
-                    hand[card] = cardCount + 1;
+                    if (position < handSize) {
+                        hand[card]++;
+                    } else {
+                        if (specialAction?.type === 'draw') {
+                            hand[card]++;
+                        } else if (specialAction?.type === 'pickfrom') {
+                            pickFromCards.push(card);
+                        }
+                    }
+                    const cardAction = specialCards[card];
+                    if (!specialAction && cardAction) {
+                        if (handSize + cardAction.count <= deck.length) {
+                            specialAction = cardAction;
+                        }
+                    }
                     break;
                 }
+            } 
+            
+            if (position === handSize + (specialAction?.count || 0) - 1) {
+                break;
             }
         }
 
-        const hasCombo = combo.some(andRequirements => {
-            return andRequirements.every(orRequirements => {
-                return orRequirements.some(({card, inDeck, count}) => {
-                    const handCount = hand[card];
-                    return inDeck ? (deckCounts[card] || 0) - handCount >= count : handCount >= count
-                });
-            })
-        });
+
+        let hasCombo = false;
+        if (specialAction?.type === 'pickfrom') {
+            for (let i = 0; i < pickFromCards.length; i++) {
+                hand[pickFromCards[i]]++;
+                hasCombo = hasCombo || checkCombo();
+                hand[pickFromCards[i]]--;
+            }
+        } else {
+            hasCombo = checkCombo();
+        }
         if (hasCombo) {
             successfulTrials++;
         }
@@ -383,7 +425,6 @@ class MainController {
         const simulateCount = this.simulateCount;
         this.simulateCount++;
         console.time(`simulate call ${simulateCount}`);
-        replaceCardNamesWithNumbers(deck, combo);
 
         const resultCallback = (successfulTrials) => {
             if (this.lastIdentity === identity) {
@@ -492,7 +533,12 @@ const defaultDeck = `# Add your deck in this box and the combos in the one to th
 3 card d
 3 card e
 3 card f
-1 card g`;
+1 card g
+
+# You can add cards that perform special actions
+# Only the first special action card will be used in a hand
+2 draw2
+3 pickfrom6`;
 
 const defaultCombo = `# Simple one card combo
 card a
