@@ -166,14 +166,14 @@ function runSimulations() {
         totalRewards[type] /= trials;
     }
 
-    const comissionApValue = (totalRewards.credit + 32 * totalRewards.stone) / 3.4045
+    const commissionApValue = (totalRewards.credit + 32 * totalRewards.stone) / 3.4045
         + totalRewards.report * 2000 / 160;
     const rows = [
         ['Credits', `${totalRewards.credit || 0}k`],
         ['Advanced activity reports', totalRewards.report],
         ['Advanced equipment stones', totalRewards.stone],
-        ['Comission AP value', `${comissionApValue}`],
-        ['Comission AP efficiency', `${comissionApValue / ap}`],
+        ['Commission AP value', `${commissionApValue}`],
+        ['Commission AP efficiency', `${commissionApValue / ap}`],
         ['Miyu (Swimsuit) elephs', totalRewards.miyu],
         ['Eligma', totalRewards.eligma],
         ['Pyro', totalRewards.pyro],
