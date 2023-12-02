@@ -60,7 +60,7 @@ const rollRewards = [
     {rollCount: 100, rewards: {credit: 300}},
 ];
 
-function simulateDiceRace(rolls, targetTileIndices) {
+function simulateDiceRace(rolls, targetTileIndices, ignoreFirstTimeRewards) {
     const totalRewards = {};
     const fixedTickets = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0};
     const trackLength = tileRewards.length;
@@ -87,9 +87,11 @@ function simulateDiceRace(rolls, targetTileIndices) {
     function advance(tileCount) {
         currentTileIndex += tileCount;
         if (currentTileIndex >= trackLength) {
-            addRewards(lapRewards[currentLapIndex])
-            if (fixedTicketLaps.has(currentLapIndex)) {
-                addFixedTicket();
+            if (!ignoreFirstTimeRewards) {
+                addRewards(lapRewards[currentLapIndex])
+                if (fixedTicketLaps.has(currentLapIndex)) {
+                    addFixedTicket();
+                }
             }
             currentLapIndex++;
             currentTileIndex -= trackLength;
@@ -113,9 +115,11 @@ function simulateDiceRace(rolls, targetTileIndices) {
         }
     }
 
-    for (const {rollCount, rewards} of rollRewards) {
-        if (rolls >= rollCount) {
-            addRewards(rewards);
+    if (!ignoreFirstTimeRewards) {
+        for (const {rollCount, rewards} of rollRewards) {
+            if (rolls >= rollCount) {
+                addRewards(rewards);
+            }
         }
     }
 
@@ -133,7 +137,7 @@ function simulateDiceRace(rolls, targetTileIndices) {
             }
         }
     }
-    
+
     return {rewards: totalRewards, laps: currentLapIndex};
 }
 
@@ -144,6 +148,7 @@ function runSimulations() {
     const ap = Number(qs('#ap').value);
     const bonus = Number(qs('#bonus').value);
     const trials = Number(qs('#trials').value);
+    const ignoreFirstTimeRewards = qs('#ignoreFirstTimeRewards').checked;
     const rollCount = ap * 1.8 * (1 + (bonus / 100)) / 500;
     const targetTileIndices = [...document.querySelectorAll('.tile-checkbox').entries()]
         .filter(([index, checkbox]) => checkbox.checked)
@@ -152,7 +157,7 @@ function runSimulations() {
     const totalRewards = {};
     let totalLaps = 0;
     for (let i = 0; i < trials; i++) {
-        const {rewards, laps} = simulateDiceRace(rollCount, targetTileIndices);
+        const {rewards, laps} = simulateDiceRace(rollCount, targetTileIndices, ignoreFirstTimeRewards);
         totalLaps += laps;
         for (const [type, amount] of Object.entries(rewards)) {
             if (!totalRewards[type]) {
