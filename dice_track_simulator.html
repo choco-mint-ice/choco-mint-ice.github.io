@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Dice track simulator</title>
+    <script src="dice_track_simulator.js"></script>
+</head>
+
+<body>
+    <div>
+        <span>AP</span>
+        <input id="ap" type="number" value="14000">
+    </div>
+    <div>
+        <span>Bonus</span>
+        <input id="bonus" type="number" value="120">
+    </div>
+    <div>
+        <span>Trials</span>
+        <input id="trials" type="number" value="10000">
+    </div>
+    
+    <div id="tile-selector">
+        <div>Select which tiles to use dice fixed tickets to reach:</div>
+    </div>
+
+    <button id="run-simulations-button">Run simulation</button>
+
+    <div>Rewards (lap completion bonuses and achievements are included)</div>
+    <table id="result"></table>
+</body>
