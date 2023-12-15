@@ -67,6 +67,7 @@ function simulateDiceRace(rolls, targetTileIndices, ignoreFirstTimeRewards) {
     let currentTileIndex = 0;
     let currentLapIndex = 0;
 
+
     function getDiceRoll() {
         return 1 + Math.floor(Math.random() * 6)
     }
@@ -116,6 +117,7 @@ function simulateDiceRace(rolls, targetTileIndices, ignoreFirstTimeRewards) {
     }
 
     if (!ignoreFirstTimeRewards) {
+        rolls += 3400 / 500;
         for (const {rollCount, rewards} of rollRewards) {
             if (rolls >= rollCount) {
                 addRewards(rewards);
