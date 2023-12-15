@@ -1,3 +1,4 @@
+const firstClearCurrency = 3400;
 const tileRewards = [
     {miyu: 5},
     {report: 20},
@@ -117,7 +118,6 @@ function simulateDiceRace(rolls, targetTileIndices, ignoreFirstTimeRewards) {
     }
 
     if (!ignoreFirstTimeRewards) {
-        rolls += 3400 / 500;
         for (const {rollCount, rewards} of rollRewards) {
             if (rolls >= rollCount) {
                 addRewards(rewards);
@@ -151,7 +151,8 @@ function runSimulations() {
     const bonus = Number(qs('#bonus').value);
     const trials = Number(qs('#trials').value);
     const ignoreFirstTimeRewards = qs('#ignoreFirstTimeRewards').checked;
-    const rollCount = ap * 1.8 * (1 + (bonus / 100)) / 500;
+    const currency = ap * 1.8 * (1 + (bonus / 100)) + (ignoreFirstTimeRewards ? 0 : firstClearCurrency);
+    const rolls = Math.floor(currency / 500);
     const targetTileIndices = [...document.querySelectorAll('.tile-checkbox').entries()]
         .filter(([index, checkbox]) => checkbox.checked)
         .map(([index, checkbox]) => index);
@@ -159,7 +160,7 @@ function runSimulations() {
     const totalRewards = {};
     let totalLaps = 0;
     for (let i = 0; i < trials; i++) {
-        const {rewards, laps} = simulateDiceRace(rollCount, targetTileIndices, ignoreFirstTimeRewards);
+        const {rewards, laps} = simulateDiceRace(rolls, targetTileIndices, ignoreFirstTimeRewards);
         totalLaps += laps;
         for (const [type, amount] of Object.entries(rewards)) {
             if (!totalRewards[type]) {
