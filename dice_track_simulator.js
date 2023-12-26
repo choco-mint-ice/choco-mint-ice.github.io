@@ -1,26 +1,27 @@
 const firstClearCurrency = 3400;
+const webEventCurrency = 8000;
 const tileRewards = [
     {miyu: 5},
-    {report: 20},
-    {credit: 2000},
-    {stone: 10},
-    {},
-    {miyu: 4},
-    {eligma: 6},
-    {report: 10},
-    {stone: 12},
-    {credit: 1600},
-    {},
-    {credit: 2400},
-    {eligma: 12},
-    {miyu: 7},
-    {eligma: 8},
-    {report: 22},
-    {stone: 15},
     {credit: 3200},
+    {stone: 15},
+    {report: 22},
+    {eligma: 8},
+    {miyu: 7},
+    {eligma: 12},
+    {credit: 2400},
+    {},
+    {credit: 1600},
+    {stone: 12},
+    {report: 10},
+    {eligma: 6},
+    {miyu: 4},
+    {},
+    {stone: 10},
+    {credit: 2000},
+    {report: 17},
 ];
-const fixedTicketTiles = new Set([4]);
-const advanceTiles = {10: 6};
+const fixedTicketTiles = new Set([14]);
+const advanceTiles = {8: 6};
 
 const lapRewards = [
     {report: 20, miyu: 3, pyro: 20},
@@ -151,7 +152,7 @@ function runSimulations() {
     const bonus = Number(qs('#bonus').value);
     const trials = Number(qs('#trials').value);
     const ignoreFirstTimeRewards = qs('#ignoreFirstTimeRewards').checked;
-    const currency = ap * 1.8 * (1 + (bonus / 100)) + (ignoreFirstTimeRewards ? 0 : firstClearCurrency);
+    const currency = ap * 1.8 * (1 + (bonus / 100)) + (ignoreFirstTimeRewards ? 0 : firstClearCurrency + webEventCurrency);
     const rolls = Math.floor(currency / 500);
     const targetTileIndices = [...document.querySelectorAll('.tile-checkbox').entries()]
         .filter(([index, checkbox]) => checkbox.checked)
