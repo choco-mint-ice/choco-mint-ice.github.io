@@ -1,65 +1,84 @@
-const firstClearCurrency = 3400;
-const webEventCurrency = 8000;
+const firstClearCurrency = 3125;
+const webEventCurrency = 0;
 const tileRewards = [
-    {miyu: 5},
-    {credit: 3200},
-    {stone: 15},
-    {report: 22},
-    {eligma: 8},
-    {miyu: 7},
-    {eligma: 12},
-    {credit: 2400},
     {},
-    {credit: 1600},
-    {stone: 12},
-    {report: 10},
-    {eligma: 6},
-    {miyu: 4},
-    {},
-    {stone: 10},
-    {credit: 2000},
+    {equipment: 53},
+    {stone: 13},
     {report: 17},
+    {},
+    {credit: 2000},
+    {equipment: 41},
+    {report: 11},
+    {eligma: 5},
+    {credit: 1600},
+    {},
+    {credit: 1800},
+    {eligma: 4},
+    {stone: 11},
+    {equipment: 37},
+    {credit: 1900},
+    {},
+    {report: 19},
 ];
-const fixedTicketTiles = new Set([14]);
-const advanceTiles = {8: 6};
+const fixedTicketTiles = new Set([0]);
+const advanceTiles = {4: 3, 10: 1, 16: 2};
 
 const lapRewards = [
-    {report: 20, miyu: 3, pyro: 20},
-    {stone: 20, miyu: 3, pyro: 20},
-    {report: 40, miyu: 3},
-    {stone: 40, miyu: 3, pyro: 20},
-    {report: 75, miyu: 3},
-    {stone: 60, miyu: 3, pyro: 20},
-    {miyu: 3, recruitmentTicket: 5},
-    {report: 100, miyu: 3, pyro: 20},
-    {stone: 100, miyu: 3},
-    {secretTechNotes: 1, miyu: 3, pyro: 20},
-    {credit: 1200, miyu: 5},
-    {credit: 1200, miyu: 5, pyro: 20},
-    {credit: 1200, miyu: 5},
-    {credit: 1200, miyu: 5, pyro: 20},
-    {credit: 1200, miyu: 5},
-    {credit: 2000, miyu: 5},
-    {credit: 2000, miyu: 5, pyro: 30},
-    {credit: 2000, miyu: 5},
-    {credit: 2000, miyu: 5},
-    {credit: 2000, miyu: 5, pyro: 30},
+    {report: 20, pyro: 20},
+    {stone: 20},
+    {report: 40, pyro: 20},
+    {stone: 40},
+    {report: 75, pyro: 20},
+    {stone: 60},
+    {pyro: 600},
+    {report: 100},
+    {stone: 80},
+    {secretTechNotes: 1, pyro: 20},
+    {credit: 1200},
+    {credit: 1200},
+    {credit: 1200},
+    {credit: 1200},
+    {credit: 1200, pyro: 20},
+    {credit: 2000},
+    {credit: 2000},
+    {credit: 2000},
+    {credit: 2000},
+    {credit: 2000, pyro: 20},
+    {},
+    {},
+    {},
+    {},
+    {pyro: 20},
+    {},
+    {},
+    {},
+    {},
+    {pyro: 20},
+    {},
+    {},
+    {},
+    {},
+    {pyro: 30},
+    {},
+    {},
+    {},
+    {},
+    {pyro: 30},
 ];
-const fixedTicketLaps = new Set([1, 3, 5, 7, 9]);
+const fixedTicketLaps = new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
 
 const rollRewards = [
-    {rollCount: 1, rewards: {credit: 100}},
     {rollCount: 5, rewards: {credit: 100}},
     {rollCount: 10, rewards: {credit: 100}},
     {rollCount: 20, rewards: {credit: 100}},
-    {rollCount: 30, rewards: {credit: 100}},
-    {rollCount: 40, rewards: {credit: 100}},
-    {rollCount: 50, rewards: {credit: 200}},
     {rollCount: 60, rewards: {credit: 200}},
-    {rollCount: 70, rewards: {credit: 200}},
     {rollCount: 80, rewards: {credit: 200}},
-    {rollCount: 90, rewards: {credit: 300}},
-    {rollCount: 100, rewards: {credit: 300}},
+    {rollCount: 100, rewards: {credit: 200}},
+    {rollCount: 120, rewards: {credit: 200}},
+    {rollCount: 140, rewards: {credit: 200}},
+    {rollCount: 160, rewards: {credit: 200}},
+    {rollCount: 180, rewards: {credit: 200}},
+    {rollCount: 200, rewards: {credit: 300}},
 ];
 
 function simulateDiceRace(rolls, targetTileIndices, ignoreFirstTimeRewards) {
@@ -105,7 +124,8 @@ function simulateDiceRace(rolls, targetTileIndices, ignoreFirstTimeRewards) {
         }
 
         if (advanceTiles[currentTileIndex]) {
-            advance(advanceTiles[currentTileIndex]);
+            advance(advanceTiles[currentTileIndex])
+            return;
         }
 
         for (const targetTileIndex of targetTileIndices) {
@@ -113,7 +133,7 @@ function simulateDiceRace(rolls, targetTileIndices, ignoreFirstTimeRewards) {
             if (fixedTickets[targetRoll]) {
                 fixedTickets[targetRoll]--;
                 advance(targetRoll);
-                break;
+                return;
             }
         }
     }
@@ -152,7 +172,7 @@ function runSimulations() {
     const bonus = Number(qs('#bonus').value);
     const trials = Number(qs('#trials').value);
     const ignoreFirstTimeRewards = qs('#ignoreFirstTimeRewards').checked;
-    const currency = ap * 1.8 * (1 + (bonus / 100)) + (ignoreFirstTimeRewards ? 0 : firstClearCurrency + webEventCurrency);
+    const currency = ap * 1.6 * (1 + (bonus / 100)) + (ignoreFirstTimeRewards ? 0 : firstClearCurrency + webEventCurrency);
     const rolls = Math.floor(currency / 500);
     const targetTileIndices = [...document.querySelectorAll('.tile-checkbox').entries()]
         .filter(([index, checkbox]) => checkbox.checked)
@@ -176,14 +196,13 @@ function runSimulations() {
     }
 
     const commissionApValue = (totalRewards.credit + 32 * totalRewards.stone) / 3.4045
-        + totalRewards.report * 2000 / 160;
+        + totalRewards.report * 2000 / 165;
     const rows = [
         ['Credits', `${totalRewards.credit || 0}k`],
         ['Advanced activity reports', totalRewards.report],
         ['Advanced equipment stones', totalRewards.stone],
         ['Commission AP value', `${commissionApValue}`],
         ['Commission AP efficiency', `${commissionApValue / ap}`],
-        ['Miyu (Swimsuit) elephs', totalRewards.miyu],
         ['Eligma', totalRewards.eligma],
         ['Pyro', totalRewards.pyro],
         ['Laps', totalLaps / trials],
@@ -220,10 +239,10 @@ window.onload = () => {
             label.textContent = `${reward.credit}k credits`;
         } else if (reward.report) {
             label.textContent = `${reward.report} advanced activity reports`;
+        } else if (reward.equipment) {
+            label.textContent = `${reward.equipment} equipment blueprints`;
         } else if (reward.eligma) {
             label.textContent = `${reward.eligma} eligma`;
-        } else if (reward.miyu) {
-            label.textContent = `${reward.miyu} Miyu (Swimsuit) elephs`;
         } else if (advanceTiles[index]) {
             label.textContent = `Advance ${advanceTiles[index]} tiles`;
         } else if (fixedTicketTiles.has(index)) {
