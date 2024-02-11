@@ -201,6 +201,7 @@ function runSimulations() {
         ['Credits', `${totalRewards.credit || 0}k`],
         ['Advanced activity reports', totalRewards.report],
         ['Advanced equipment stones', totalRewards.stone],
+        ['Equipment blueprints', totalRewards.equipment],
         ['Commission AP value', `${commissionApValue}`],
         ['Commission AP efficiency', `${commissionApValue / ap}`],
         ['Eligma', totalRewards.eligma],
